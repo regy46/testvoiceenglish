@@ -1,0 +1,6 @@
+{
+  "name": "Portal Pengiriman Voice Note & Admin Dashboard",
+  "description": "Aplikasi pengiriman pesan suara (voice note) siswa berdasarkan nama dan kelas dengan dashboard pengelolaan khusus admin.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
