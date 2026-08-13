@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { VoiceNoteItem } from '../types';
 import { VoiceRecorder } from './VoiceRecorder';
-import { saveNewVoiceNote, getStoredVoiceNotes, getMySubmissionIds } from '../utils/storage';
+import { saveNewVoiceNote, getStoredVoiceNotes, getMySubmissionIds, saveMySubmissionId } from '../utils/storage';
+import { addVoiceNoteToFirestore, subscribeToVoiceNotes } from '../firebase';
 import { formatTime } from '../utils/audioUtils';
 import { 
   Send, 
@@ -13,7 +14,8 @@ import {
   MessageSquare, 
   Sparkles,
   Volume2,
-  RefreshCw
+  RefreshCw,
+  Wifi
 } from 'lucide-react';
 
 interface PenggunaPageProps {
@@ -35,7 +37,19 @@ export const PenggunaPage: React.FC<PenggunaPageProps> = ({ onSubmissionsUpdated
   const [myHistory, setMyHistory] = useState<VoiceNoteItem[]>([]);
 
   useEffect(() => {
+    // Initial local history load
     loadMyHistory();
+
+    // Subscribe to Firestore for real-time updates to student's notes
+    const unsubscribe = subscribeToVoiceNotes((allNotes) => {
+      const myIds = getMySubmissionIds();
+      if (allNotes && allNotes.length > 0) {
+        const filtered = allNotes.filter((item) => myIds.includes(item.id));
+        setMyHistory(filtered);
+      }
+    });
+
+    return () => unsubscribe();
   }, [submittedItem]);
 
   const loadMyHistory = () => {
@@ -55,7 +69,7 @@ export const PenggunaPage: React.FC<PenggunaPageProps> = ({ onSubmissionsUpdated
     setAudioDuration(0);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!namaLengkap.trim()) {
@@ -75,22 +89,36 @@ export const PenggunaPage: React.FC<PenggunaPageProps> = ({ onSubmissionsUpdated
 
     setIsSubmitting(true);
 
-    setTimeout(() => {
-      const newItem: VoiceNoteItem = {
-        id: 'vn-' + Date.now(),
-        namaLengkap: namaLengkap.trim(),
-        kelas: kelas.trim(),
-        audioUrl: audioDataUrl,
-        duration: audioDuration,
-        createdAt: new Date().toISOString(),
-        status: 'unread',
-      };
+    const notePayload: Omit<VoiceNoteItem, 'id'> = {
+      namaLengkap: namaLengkap.trim(),
+      kelas: kelas.trim(),
+      audioUrl: audioDataUrl,
+      duration: audioDuration,
+      createdAt: new Date().toISOString(),
+      status: 'unread',
+    };
 
-      saveNewVoiceNote(newItem);
+    try {
+      // 1. Save to Firestore for cross-device synchronization
+      const firestoreId = await addVoiceNoteToFirestore(notePayload);
+      const fullItem: VoiceNoteItem = { id: firestoreId, ...notePayload };
+
+      // 2. Save locally for device history
+      saveMySubmissionId(firestoreId);
+      saveNewVoiceNote(fullItem);
+
       setIsSubmitting(false);
-      setSubmittedItem(newItem);
+      setSubmittedItem(fullItem);
       if (onSubmissionsUpdated) onSubmissionsUpdated();
-    }, 600);
+    } catch (error) {
+      console.error('Failed to submit to Firestore, saving locally:', error);
+      const localId = 'vn-' + Date.now();
+      const localItem: VoiceNoteItem = { id: localId, ...notePayload };
+      saveNewVoiceNote(localItem);
+      setIsSubmitting(false);
+      setSubmittedItem(localItem);
+      if (onSubmissionsUpdated) onSubmissionsUpdated();
+    }
   };
 
   const handleResetForm = () => {

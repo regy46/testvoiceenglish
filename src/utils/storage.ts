@@ -9,12 +9,10 @@ export function getStoredVoiceNotes(): VoiceNoteItem[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      // Seed initial data
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(MOCK_VOICE_NOTES));
       return MOCK_VOICE_NOTES;
     }
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : MOCK_VOICE_NOTES;
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : MOCK_VOICE_NOTES;
   } catch (e) {
     console.error('Failed to parse voice notes from storage', e);
     return MOCK_VOICE_NOTES;
@@ -31,10 +29,11 @@ export function saveVoiceNotes(items: VoiceNoteItem[]): void {
 
 export function saveNewVoiceNote(item: VoiceNoteItem): VoiceNoteItem[] {
   const current = getStoredVoiceNotes();
-  const updated = [item, ...current];
+  const exists = current.some((i) => i.id === item.id);
+  const updated = exists ? current.map((i) => (i.id === item.id ? item : i)) : [item, ...current];
   saveVoiceNotes(updated);
   
-  // Also track student's own submission IDs on this device
+  // Track student's own submission IDs on this device
   saveMySubmissionId(item.id);
   return updated;
 }

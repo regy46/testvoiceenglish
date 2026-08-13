@@ -1,0 +1,20 @@
+{
+  "entities": {
+    "voice_notes": {
+      "title": "Voice Notes",
+      "description": "Student voice note submissions saved in Firestore for cross-device synchronization between students and admin dashboard",
+      "properties": {
+        "namaLengkap": { "type": "string", "description": "Student full name" },
+        "kelas": { "type": "string", "description": "Student class name" },
+        "kategori": { "type": "string", "description": "Optional category" },
+        "audioUrl": { "type": "string", "description": "Audio data URL (base64 audio) or link" },
+        "duration": { "type": "number", "description": "Audio duration in seconds" },
+        "createdAt": { "type": "string", "description": "ISO timestamp of creation" },
+        "status": { "type": "string", "description": "Status: unread, read, replied" },
+        "catatanAdmin": { "type": "string", "description": "Admin response or feedback notes" },
+        "starred": { "type": "boolean", "description": "Starred or bookmarked by admin" }
+      },
+      "required": ["namaLengkap", "kelas", "audioUrl", "duration", "createdAt", "status"]
+    }
+  }
+}

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { VoiceNoteItem, VoiceNoteStatus } from '../types';
 import { formatTime } from '../utils/audioUtils';
 import { 
@@ -8,6 +8,13 @@ import {
   getAdminPassword, 
   setAdminPassword 
 } from '../utils/storage';
+import {
+  subscribeToVoiceNotes,
+  updateVoiceNoteInFirestore,
+  deleteVoiceNoteFromFirestore,
+  bulkDeleteVoiceNotesInFirestore,
+  bulkUpdateStatusInFirestore
+} from '../firebase';
 import { 
   ShieldCheck, 
   Search, 
@@ -73,6 +80,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
 
   // Selected Checkboxes for Bulk Action
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  // Real-time Firestore sync
+  useEffect(() => {
+    const unsubscribe = subscribeToVoiceNotes((firestoreNotes) => {
+      if (firestoreNotes && firestoreNotes.length > 0) {
+        setItems(firestoreNotes);
+        saveVoiceNotes(firestoreNotes);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   // Unique list of classes currently present in data for filter dropdown
   const availableClasses = useMemo(() => {
@@ -140,6 +159,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
       if (item.status === 'unread') {
         const updated = items.map((i) => (i.id === item.id ? { ...i, status: 'read' as VoiceNoteStatus } : i));
         updateItems(updated);
+        updateVoiceNoteInFirestore(item.id, { status: 'read' }).catch(() => {});
       }
     }
   };
@@ -175,33 +195,40 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
 
   // Toggle Star / Bookmark
   const toggleStar = (id: string) => {
+    const currentItem = items.find((i) => i.id === id);
+    const newStarred = !currentItem?.starred;
     const updated = items.map((item) =>
-      item.id === id ? { ...item, starred: !item.starred } : item
+      item.id === id ? { ...item, starred: newStarred } : item
     );
     updateItems(updated);
+    updateVoiceNoteInFirestore(id, { starred: newStarred }).catch(() => {});
   };
 
   // Toggle Read / Unread
   const toggleReadStatus = (id: string) => {
+    const currentItem = items.find((i) => i.id === id);
+    const nextStatus: VoiceNoteStatus = currentItem?.status === 'unread' ? 'read' : 'unread';
     const updated = items.map((item) => {
       if (item.id === id) {
-        const nextStatus: VoiceNoteStatus = item.status === 'unread' ? 'read' : 'unread';
         return { ...item, status: nextStatus };
       }
       return item;
     });
     updateItems(updated);
+    updateVoiceNoteInFirestore(id, { status: nextStatus }).catch(() => {});
   };
 
   // Save Admin Note / Response
   const handleSaveNote = () => {
     if (!editingNoteItem) return;
+    const trimmed = noteText.trim();
     const updated = items.map((item) =>
       item.id === editingNoteItem.id
-        ? { ...item, catatanAdmin: noteText.trim(), status: 'replied' as VoiceNoteStatus }
+        ? { ...item, catatanAdmin: trimmed, status: 'replied' as VoiceNoteStatus }
         : item
     );
     updateItems(updated);
+    updateVoiceNoteInFirestore(editingNoteItem.id, { catatanAdmin: trimmed, status: 'replied' }).catch(() => {});
     setEditingNoteItem(null);
     setNoteText('');
   };
@@ -213,8 +240,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
       audioRef.current.pause();
       setPlayingId(null);
     }
-    const updated = items.filter((item) => item.id !== deletingId);
+    const targetId = deletingId;
+    const updated = items.filter((item) => item.id !== targetId);
     updateItems(updated);
+    deleteVoiceNoteFromFirestore(targetId).catch(() => {});
     setDeletingId(null);
   };
 
@@ -257,17 +286,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
   };
 
   const handleBulkMarkRead = () => {
+    const idsToUpdate = [...selectedIds];
     const updated = items.map((i) =>
-      selectedIds.includes(i.id) ? { ...i, status: 'read' as VoiceNoteStatus } : i
+      idsToUpdate.includes(i.id) ? { ...i, status: 'read' as VoiceNoteStatus } : i
     );
     updateItems(updated);
+    bulkUpdateStatusInFirestore(idsToUpdate, 'read').catch(() => {});
     setSelectedIds([]);
   };
 
   const handleBulkDelete = () => {
     if (confirm(`Yakin ingin menghapus ${selectedIds.length} voice note yang dipilih?`)) {
-      const updated = items.filter((i) => !selectedIds.includes(i.id));
+      const idsToDelete = [...selectedIds];
+      const updated = items.filter((i) => !idsToDelete.includes(i.id));
       updateItems(updated);
+      bulkDeleteVoiceNotesInFirestore(idsToDelete).catch(() => {});
       setSelectedIds([]);
     }
   };
