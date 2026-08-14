@@ -16,7 +16,12 @@ import { VoiceNoteItem } from './types';
 
 // Initialize Firebase App safely
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-export const db = getFirestore(app);
+
+// Use configured firestoreDatabaseId if provided
+const firestoreDbId = (firebaseConfig as any).firestoreDatabaseId;
+export const db = firestoreDbId && firestoreDbId !== '(default)'
+  ? getFirestore(app, firestoreDbId)
+  : getFirestore(app);
 
 const COLLECTION_NAME = 'voice_notes';
 
@@ -48,7 +53,7 @@ export function subscribeToVoiceNotes(callback: (notes: VoiceNoteItem[]) => void
         callback(items);
       },
       (error) => {
-        console.error('Error listening to voice_notes in Firestore:', error);
+        console.warn('Firestore real-time listener note:', error);
       }
     );
 
@@ -60,21 +65,29 @@ export function subscribeToVoiceNotes(callback: (notes: VoiceNoteItem[]) => void
 }
 
 /**
- * Add a new voice note document to Firestore
+ * Add a new voice note document to Firestore with safety timeout
  */
 export async function addVoiceNoteToFirestore(item: Omit<VoiceNoteItem, 'id'>): Promise<string> {
-  const docRef = await addDoc(collection(db, COLLECTION_NAME), {
-    namaLengkap: item.namaLengkap,
-    kelas: item.kelas,
-    kategori: item.kategori || null,
-    audioUrl: item.audioUrl,
-    duration: item.duration,
-    createdAt: item.createdAt,
-    status: item.status || 'unread',
-    catatanAdmin: item.catatanAdmin || null,
-    starred: Boolean(item.starred),
-  });
-  return docRef.id;
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error('Koneksi Firestore timeout')), 6000)
+  );
+
+  const writeOperation = async (): Promise<string> => {
+    const docRef = await addDoc(collection(db, COLLECTION_NAME), {
+      namaLengkap: item.namaLengkap,
+      kelas: item.kelas,
+      kategori: item.kategori || null,
+      audioUrl: item.audioUrl,
+      duration: item.duration,
+      createdAt: item.createdAt,
+      status: item.status || 'unread',
+      catatanAdmin: item.catatanAdmin || null,
+      starred: Boolean(item.starred),
+    });
+    return docRef.id;
+  };
+
+  return await Promise.race([writeOperation(), timeoutPromise]);
 }
 
 /**

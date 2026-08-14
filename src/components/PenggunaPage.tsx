@@ -111,9 +111,10 @@ export const PenggunaPage: React.FC<PenggunaPageProps> = ({ onSubmissionsUpdated
       setSubmittedItem(fullItem);
       if (onSubmissionsUpdated) onSubmissionsUpdated();
     } catch (error) {
-      console.error('Failed to submit to Firestore, saving locally:', error);
+      console.warn('Fallback saving locally due to network/cloud timeout:', error);
       const localId = 'vn-' + Date.now();
       const localItem: VoiceNoteItem = { id: localId, ...notePayload };
+      saveMySubmissionId(localId);
       saveNewVoiceNote(localItem);
       setIsSubmitting(false);
       setSubmittedItem(localItem);
